@@ -2193,7 +2193,7 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	receiptIter := receiptProofDb.NewIterator(nil, nil)
 	var feeTransactionReceiptProof []hexutil.Bytes
 	for receiptIter.Next() {
-		feeTransactionProof = append(feeTransactionReceiptProof, iter.Value())
+		feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
 	}
 	iter.Release()
 
