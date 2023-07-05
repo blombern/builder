@@ -13,4 +13,7 @@ type KickbackArgs struct {
 	FeeTransactionIndex        hexutil.Bytes    `json:"feeTransactionIndex"`
 	FeeTransactionProof        *[]hexutil.Bytes `json:"feeTransactionProof"`
 	FeeTransactionReceiptProof *[]hexutil.Bytes `json:"receiptsProof"`
+	StateRoot                  *common.Hash     `json:"stateRoot"`
+	TransactionRoot            *common.Hash     `json:"transactionRoot"`
+	ReceiptsRoot               *common.Hash     `json:"receiptsRoot"`
 }

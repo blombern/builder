@@ -1491,7 +1491,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 			return nil, nil, nil, err
 		}
 		if kickbackArgs != nil {
-			log.Info("Successfully produced kickback args", kickbackArgs)
+			log.Info("Successfully produced kickback args", "kickbackArgs", kickbackArgs)
 
 		}
 
@@ -2205,6 +2205,9 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		FeeTransactionIndex:        txKey,
 		FeeTransactionProof:        &feeTransactionProof,
 		FeeTransactionReceiptProof: &feeTransactionReceiptProof,
+		StateRoot:                  &env.header.Root,
+		TransactionRoot:            &env.header.TxHash,
+		ReceiptsRoot:               &env.header.ReceiptHash,
 	}, nil
 
 }
