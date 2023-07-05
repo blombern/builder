@@ -2197,6 +2197,9 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	}
 	iter.Release()
 
+	txHash := types.DeriveSha(txs, trie.NewStackTrie(nil))
+	receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+
 	return &types.KickbackArgs{
 		FeeRecipient:               validatorCoinbase,
 		FeeRecipientProof:          &hexValidatorProof,
@@ -2206,8 +2209,8 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		FeeTransactionProof:        &feeTransactionProof,
 		FeeTransactionReceiptProof: &feeTransactionReceiptProof,
 		StateRoot:                  &env.header.Root,
-		TransactionRoot:            &env.header.TxHash,
-		ReceiptsRoot:               &env.header.ReceiptHash,
+		TransactionRoot:            &txHash,
+		ReceiptsRoot:               &receiptHash,
 	}, nil
 
 }
