@@ -160,10 +160,10 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 }
 
 type KickbackBlockRequest struct {
-	Message          *v1.BidTrace
-	ExecutionPayload *capella2.ExecutionPayload
-	Signature        phase0.BLSSignature `ssz-size:"96"`
-	KickbackArgs     *types.KickbackArgs
+	Message          *v1.BidTrace               `json:"message"`
+	ExecutionPayload *capella2.ExecutionPayload `json:"execution_payload"`
+	Signature        phase0.BLSSignature        `json:"signature"`
+	KickbackArgs     *types.KickbackArgs        `json:"kickback_args"`
 }
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.KickbackArgs) error {
