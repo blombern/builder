@@ -13,7 +13,6 @@ import (
 	"github.com/attestantio/go-builder-client/api/capella"
 	v1 "github.com/attestantio/go-builder-client/api/v1"
 	capella2 "github.com/attestantio/go-eth2-client/spec/capella"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
@@ -162,7 +161,7 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 type KickbackBlockRequest struct {
 	Message          *v1.BidTrace               `json:"message"`
 	ExecutionPayload *capella2.ExecutionPayload `json:"execution_payload"`
-	Signature        phase0.BLSSignature        `json:"signature"`
+	Signature        string                     `json:"signature"`
 	KickbackArgs     *types.KickbackArgs        `json:"kickback_args"`
 }
 
@@ -191,7 +190,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 		message := &KickbackBlockRequest{
 			Message:          msg.Message,
 			ExecutionPayload: msg.ExecutionPayload,
-			Signature:        msg.Signature,
+			Signature:        fmt.Sprintf("%#x", msg.Signature),
 			KickbackArgs:     kickbackArgs,
 		}
 		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, message, nil)
