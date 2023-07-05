@@ -23,6 +23,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	bellatrixutil "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
 	"github.com/flashbots/go-boost-utils/ssz"
@@ -115,7 +116,7 @@ func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ Validat
 	return r.submitBlock(msg)
 }
 
-func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData) error {
+func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData, _ *types.KickbackArgs) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 
 	return r.submitBlockCapella(msg)

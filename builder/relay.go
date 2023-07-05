@@ -11,6 +11,10 @@ import (
 
 	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
+	v1 "github.com/attestantio/go-builder-client/api/v1"
+	capella2 "github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
 )
@@ -155,10 +159,17 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 	return nil
 }
 
-func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+type KickbackBlockRequest struct {
+	Message          *v1.BidTrace
+	ExecutionPayload *capella2.ExecutionPayload
+	Signature        phase0.BLSSignature `ssz-size:"96"`
+	KickbackArgs     *types.KickbackArgs
+}
+
+func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.KickbackArgs) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
-	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
+	endpoint := r.config.Endpoint + "/relay/ultrasound/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -177,7 +188,13 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 		}
 	} else {
-		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
+		message := &KickbackBlockRequest{
+			Message:          msg.Message,
+			ExecutionPayload: msg.ExecutionPayload,
+			Signature:        msg.Signature,
+			KickbackArgs:     kickbackArgs,
+		}
+		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, message, nil)
 		if err != nil {
 			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}

@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -28,9 +29,11 @@ import (
 
 	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -39,6 +42,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -184,9 +188,10 @@ type newWorkReq struct {
 
 // newPayloadResult represents a result struct corresponds to payload generation.
 type newPayloadResult struct {
-	err   error
-	block *types.Block
-	fees  *big.Int
+	err          error
+	block        *types.Block
+	fees         *big.Int
+	kickbackArgs *types.KickbackArgs
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -653,11 +658,12 @@ func (w *worker) mainLoop() {
 
 		case req := <-w.getWorkCh:
 			go func() {
-				block, fees, err := w.generateWork(req.params)
+				block, fees, kickbackArgs, err := w.generateWork(req.params)
 				req.result <- &newPayloadResult{
-					err:   err,
-					block: block,
-					fees:  fees,
+					err:          err,
+					block:        block,
+					fees:         fees,
+					kickbackArgs: kickbackArgs,
 				}
 			}()
 		case ev := <-w.chainSideCh:
@@ -1465,7 +1471,7 @@ func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle,
 }
 
 // generateWork generates a sealing block based on the given parameters.
-func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, error) {
+func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *types.KickbackArgs, error) {
 	start := time.Now()
 	validatorCoinbase := params.coinbase
 	// Set builder coinbase to be passed to beacon header
@@ -1473,16 +1479,20 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	work, err := w.prepareWork(params)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	defer work.discard()
 
 	finalizeFn := func(env *environment, orderCloseTime time.Time,
-		blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool) (*types.Block, *big.Int, error) {
-		block, profit, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
+		blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool) (*types.Block, *big.Int, *types.KickbackArgs, error) {
+		block, profit, kickbackArgs, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
-			return nil, nil, err
+			return nil, nil, nil, err
+		}
+		if kickbackArgs != nil {
+			log.Info("Successfully produced kickback args", kickbackArgs)
+
 		}
 
 		var okSbundles, totalSbundles int
@@ -1505,10 +1515,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
 		if params.onBlock != nil {
-			go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles)
+			go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles, kickbackArgs)
 		}
 
-		return block, profit, nil
+		return block, profit, kickbackArgs, nil
 	}
 
 	if params.noTxs {
@@ -1517,7 +1527,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	orderCloseTime := time.Now()
@@ -1525,7 +1535,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	blockBundles, allBundles, usedSbundles, err := w.fillTransactionsSelectAlgo(nil, work)
 
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// no bundles or tx from mempool
@@ -1535,32 +1545,40 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
 }
 
-func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, error) {
+func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, *types.KickbackArgs, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, withdrawals)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if w.config.BuilderTxSigningKey == nil {
-		return block, big.NewInt(0), nil
+		return block, big.NewInt(0), nil, nil
 	}
 
 	if noTxs {
-		return block, big.NewInt(0), nil
+		return block, big.NewInt(0), nil, nil
 	}
 
 	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return block, blockProfit, nil
+	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	kickbackArgs, err := w.produceKickbackArgs(work, &validatorCoinbase, &ultrasoundAddr)
+	if err != nil {
+		log.Error("Failed to produce kickback args", "err", err)
+		return block, blockProfit, nil, nil
+
+	}
+
+	return block, blockProfit, kickbackArgs, nil
 }
 
 func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
@@ -2120,11 +2138,75 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 
 	env.gasPool.AddGas(reserve.reservedGas)
 	chainData := chainData{w.chainConfig, w.chain, w.blockList}
-	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, availableFunds, w.config.BuilderTxSigningKey, chainData)
+
+	// Bribe
+	bribe := big.NewInt(10000000000000000)
+	total := new(big.Int).Add(availableFunds, bribe)
+
+	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common.Address, ultrasoundAddr *common.Address) (*types.KickbackArgs, error) {
+	// Account proofs
+	validatorProof, _ := env.state.GetProof(*validatorCoinbase)
+	hexValidatorProof := make([]hexutil.Bytes, len(validatorProof))
+	for i, v := range validatorProof {
+		hexValidatorProof[i] = hexutil.Bytes(v)
+	}
+
+	ultrasoundProof, _ := env.state.GetProof(*ultrasoundAddr)
+	hexUltrasoundProof := make([]hexutil.Bytes, len(ultrasoundProof))
+	for i, v := range ultrasoundProof {
+		hexUltrasoundProof[i] = hexutil.Bytes(v)
+	}
+
+	// Transaction proof
+	txKey, _ := rlp.EncodeToBytes(uint64(len(env.txs) - 1))
+	var txs types.Transactions = env.txs
+	txTrie := populateTrie(txs)
+	txProofDb := rawdb.NewMemoryDatabase()
+	key, _ := rlp.EncodeToBytes(uint(len(txs) - 1))
+	proveErr := txTrie.Prove(key, 0, txProofDb)
+	if proveErr != nil {
+		panic(proveErr)
+	}
+	iter := txProofDb.NewIterator(nil, nil)
+	var feeTransactionProof []hexutil.Bytes
+	for iter.Next() {
+		feeTransactionProof = append(feeTransactionProof, iter.Value())
+	}
+	iter.Release()
+
+	// Receipts proof
+	receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 1))
+	var receipts types.Receipts = env.receipts
+	receiptTrie := populateTrie(receipts)
+	receiptProofDb := rawdb.NewMemoryDatabase()
+	receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
+	if receiptProveErr != nil {
+		panic(receiptProveErr)
+	}
+	receiptIter := receiptProofDb.NewIterator(nil, nil)
+	var feeTransactionReceiptProof []hexutil.Bytes
+	for receiptIter.Next() {
+		feeTransactionProof = append(feeTransactionReceiptProof, iter.Value())
+	}
+	iter.Release()
+
+	return &types.KickbackArgs{
+		FeeRecipient:               validatorCoinbase,
+		FeeRecipientProof:          &hexValidatorProof,
+		FeePayer:                   ultrasoundAddr,
+		FeePayerProof:              &hexUltrasoundProof,
+		FeeTransactionIndex:        txKey,
+		FeeTransactionProof:        &feeTransactionProof,
+		FeeTransactionReceiptProof: &feeTransactionReceiptProof,
+	}, nil
+
 }
 
 // signalToErr converts the interruption signal to a concrete error type for return.
@@ -2140,4 +2222,47 @@ func signalToErr(signal int32) error {
 	default:
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
+}
+
+// encodeBufferPool holds temporary encoder buffers for DeriveSha and TX encoding.
+var encodeBufferPool = sync.Pool{
+	New: func() interface{} { return new(bytes.Buffer) },
+}
+
+func encodeForDerive(list types.DerivableList, i int, buf *bytes.Buffer) []byte {
+	buf.Reset()
+	list.EncodeIndex(i, buf)
+	// It's really unfortunate that we need to do perform this copy.
+	// StackTrie holds onto the values until Hash is called, so the values
+	// written to it must not alias.
+	return common.CopyBytes(buf.Bytes())
+}
+
+// Adapted from core/types/hashing.go
+func populateTrie(txs types.DerivableList) *trie.Trie {
+	db := rawdb.NewMemoryDatabase()
+	triedb := trie.NewDatabase(db)
+	t := trie.NewEmpty(triedb)
+
+	valueBuf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(valueBuf)
+
+	var indexBuf []byte
+	for i := 1; i < txs.Len() && i <= 0x7f; i++ {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], uint64(i))
+		value := encodeForDerive(txs, i, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	if txs.Len() > 0 {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], 0)
+		value := encodeForDerive(txs, 0, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	for i := 0x80; i < txs.Len(); i++ {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], uint64(i))
+		value := encodeForDerive(txs, i, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	return t
+
 }
