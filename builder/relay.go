@@ -2,9 +2,11 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -192,6 +194,33 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 			ExecutionPayload: msg.ExecutionPayload,
 			Signature:        fmt.Sprintf("%#x", msg.Signature),
 			KickbackArgs:     kickbackArgs,
+		}
+		if message.KickbackArgs != nil {
+			messageJson, err := json.Marshal(message)
+			if err != nil {
+				log.Error("Error during marshaling: %v", err)
+			}
+
+			// Append the newline character at the end of JSON to comply with ndjson format
+			messageJson = append(messageJson, '\n')
+
+			// Open the file in append mode
+			file, err := os.OpenFile("kickback_block_requests.ndjson", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Error("Error opening file: %v", err)
+			}
+
+			// Write JSON to file
+			_, err = file.Write(messageJson)
+			if err != nil {
+				log.Error("Error writing to file: %v", err)
+			}
+
+			// Close the file
+			if err := file.Close(); err != nil {
+				log.Error("Error closing file: %v", err)
+			}
+
 		}
 		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, message, nil)
 		if err != nil {

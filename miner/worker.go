@@ -1570,7 +1570,8 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return nil, nil, nil, err
 	}
 
-	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	// ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	ultrasoundAddr := common.HexToAddress("0x477cc10a5b54aeD5C88544C2e71eA0581cf64593") // builder
 	kickbackArgs, err := w.produceKickbackArgs(work, &validatorCoinbase, &ultrasoundAddr)
 	if err != nil {
 		log.Error("Failed to produce kickback args", "err", err)
