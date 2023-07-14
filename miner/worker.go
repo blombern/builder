@@ -1581,6 +1581,10 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 	return block, blockProfit, kickbackArgs, nil
 }
 
+func printTx(tx *types.Transaction) {
+	log.Info("tx", "hash", tx.Hash(), "to", tx.To(), "value", tx.Value(), "gas", tx.Gas(), "gasPrice", tx.GasPrice())
+}
+
 func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common.Address) (*big.Int, error) {
 	if len(work.txs) == 0 {
 		return nil, errors.New("no proposer payment tx")
@@ -1588,8 +1592,11 @@ func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common
 		return nil, errors.New("no proposer payment receipt")
 	}
 
-	relayTx := work.txs[len(work.txs)-2]
-	receipt := work.receipts[len(work.receipts)-2]
+	printTx(work.txs[len(work.txs)-2])
+	printTx(work.txs[len(work.txs)-1])
+
+	relayTx := work.txs[len(work.txs)-1]
+	receipt := work.receipts[len(work.receipts)-1]
 	if receipt.TxHash != relayTx.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
 		log.Error("proposer payment not successful!", "lastTx", relayTx, "receipt", receipt)
 		return nil, errors.New("last transaction is not proposer payment")
@@ -2150,7 +2157,7 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 		return err
 	}
 	// Placeholder tx, will never go on chain
-	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, big.NewInt(0), w.config.BuilderTxSigningKey, chainData)
+	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, big.NewInt(1), w.config.BuilderTxSigningKey, chainData)
 	if err2 != nil {
 		return err
 	}
