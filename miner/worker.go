@@ -1565,13 +1565,12 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil, nil
 	}
 
-	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
+	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	blockProfit, err := w.checkUltrasoundPayment(work, ultrasoundAddr)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	// ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	ultrasoundAddr := common.HexToAddress("0x477cc10a5b54aeD5C88544C2e71eA0581cf64593") // builder
 	kickbackArgs, err := w.produceKickbackArgs(work, &validatorCoinbase, &ultrasoundAddr)
 	if err != nil {
 		log.Error("Failed to produce kickback args", "err", err)
@@ -1582,26 +1581,26 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 	return block, blockProfit, kickbackArgs, nil
 }
 
-func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
+func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common.Address) (*big.Int, error) {
 	if len(work.txs) == 0 {
 		return nil, errors.New("no proposer payment tx")
 	} else if len(work.receipts) == 0 {
 		return nil, errors.New("no proposer payment receipt")
 	}
 
-	lastTx := work.txs[len(work.txs)-1]
-	receipt := work.receipts[len(work.receipts)-1]
-	if receipt.TxHash != lastTx.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
-		log.Error("proposer payment not successful!", "lastTx", lastTx, "receipt", receipt)
+	relayTx := work.txs[len(work.txs)-2]
+	receipt := work.receipts[len(work.receipts)-2]
+	if receipt.TxHash != relayTx.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
+		log.Error("proposer payment not successful!", "lastTx", relayTx, "receipt", receipt)
 		return nil, errors.New("last transaction is not proposer payment")
 	}
-	lastTxTo := lastTx.To()
-	if lastTxTo == nil || *lastTxTo != validatorCoinbase {
-		log.Error("last transaction is not to the proposer!", "lastTx", lastTx)
+	lastTxTo := relayTx.To()
+	if lastTxTo == nil || *lastTxTo != ultrasoundAddr {
+		log.Error("last transaction is not to the proposer!", "lastTx", relayTx)
 		return nil, errors.New("last transaction is not proposer payment")
 	}
 
-	return new(big.Int).Set(lastTx.Value()), nil
+	return new(big.Int).Set(relayTx.Value()), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -2144,8 +2143,15 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	bribe := big.NewInt(10000000000000000)
 	total := new(big.Int).Add(availableFunds, bribe)
 
-	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
+	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	// Builder pays relay
+	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
+		return err
+	}
+	// Placeholder tx, will never go on chain
+	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, big.NewInt(0), w.config.BuilderTxSigningKey, chainData)
+	if err2 != nil {
 		return err
 	}
 	return nil
@@ -2153,6 +2159,12 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 
 func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common.Address, ultrasoundAddr *common.Address) (*types.KickbackArgs, error) {
 	// Account proofs
+	builderProof, _ := env.state.GetProof(w.coinbase)
+	hexBuilderProof := make([]hexutil.Bytes, len(builderProof))
+	for i, v := range builderProof {
+		hexBuilderProof[i] = hexutil.Bytes(v)
+	}
+
 	validatorProof, _ := env.state.GetProof(*validatorCoinbase)
 	hexValidatorProof := make([]hexutil.Bytes, len(validatorProof))
 	for i, v := range validatorProof {
@@ -2183,35 +2195,37 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	iter.Release()
 
 	// Receipts proof
-	receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 1))
-	var receipts types.Receipts = env.receipts
-	receiptTrie := populateTrie(receipts)
-	receiptProofDb := rawdb.NewMemoryDatabase()
-	receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
-	if receiptProveErr != nil {
-		panic(receiptProveErr)
-	}
-	receiptIter := receiptProofDb.NewIterator(nil, nil)
-	var feeTransactionReceiptProof []hexutil.Bytes
-	for receiptIter.Next() {
-		feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
-	}
-	iter.Release()
+	// receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 1))
+	// var receipts types.Receipts = env.receipts
+	// receiptTrie := populateTrie(receipts)
+	// receiptProofDb := rawdb.NewMemoryDatabase()
+	// receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
+	// if receiptProveErr != nil {
+	// 	panic(receiptProveErr)
+	// }
+	// receiptIter := receiptProofDb.NewIterator(nil, nil)
+	// var feeTransactionReceiptProof []hexutil.Bytes
+	// for receiptIter.Next() {
+	// 	feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
+	// }
+	// iter.Release()
 
 	txHash := types.DeriveSha(txs, trie.NewStackTrie(nil))
-	receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+	// receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 
 	return &types.KickbackArgs{
-		FeeRecipient:               validatorCoinbase,
-		FeeRecipientProof:          &hexValidatorProof,
-		FeePayer:                   ultrasoundAddr,
-		FeePayerProof:              &hexUltrasoundProof,
-		FeeTransactionIndex:        txKey,
-		FeeTransactionProof:        &feeTransactionProof,
-		FeeTransactionReceiptProof: &feeTransactionReceiptProof,
-		StateRoot:                  &env.header.Root,
-		TransactionRoot:            &txHash,
-		ReceiptsRoot:               &receiptHash,
+		Builder:             &w.coinbase,
+		BuilderProof:        &hexBuilderProof,
+		FeeRecipient:        validatorCoinbase,
+		FeeRecipientProof:   &hexValidatorProof,
+		FeePayer:            ultrasoundAddr,
+		FeePayerProof:       &hexUltrasoundProof,
+		FeeTransactionIndex: txKey,
+		FeeTransactionProof: &feeTransactionProof,
+		StateRoot:           &env.header.Root,
+		TransactionRoot:     &txHash,
+		// ReceiptsRoot:               &receiptHash,
+		// FeeTransactionReceiptProof: &feeTransactionReceiptProof,
 	}, nil
 
 }
