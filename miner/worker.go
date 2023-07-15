@@ -2156,11 +2156,14 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	if err != nil {
 		return err
 	}
+	log.Info("1", "to", env.txs[len(env.txs)-1].To())
 	// Placeholder tx, will never go on chain
 	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, big.NewInt(1), w.config.BuilderTxSigningKey, chainData)
 	if err2 != nil {
+		log.Error("failed to insert placeholder tx", "err", err2)
 		return err
 	}
+	log.Info("2", "to", env.txs[len(env.txs)-1].To())
 	return nil
 }
 
