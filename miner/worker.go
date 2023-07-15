@@ -2113,6 +2113,8 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 
 	chainData := chainData{w.chainConfig, w.chain, w.blockList}
 	gas, isEOA, err := estimatePayoutTxGas(env, sender, *validatorCoinbase, w.config.BuilderTxSigningKey, chainData)
+	// include gas for placeholder tx
+	gas = gas * 2
 	if err != nil {
 		return nil, fmt.Errorf("failed to estimate proposer payout gas: %w", err)
 	}
@@ -2152,18 +2154,22 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 
 	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
 	// Builder pays relay
-	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
+	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas/2, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
 	}
-	log.Info("1", "to", env.txs[len(env.txs)-1].To())
+	log.Info("1", "to", env.txs[len(env.txs)-1].To(), "reserve", reserve.builderBalance)
 	// Placeholder tx, will never go on chain
-	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, big.NewInt(1), w.config.BuilderTxSigningKey, chainData)
+	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas/2, reserve.isEOA, big.NewInt(0), w.config.BuilderTxSigningKey, chainData)
 	if err2 != nil {
 		log.Error("failed to insert placeholder tx", "err", err2)
 		return err
 	}
 	log.Info("2", "to", env.txs[len(env.txs)-1].To())
+	return nil
+}
+
+func (w *worker) placeholderTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation) error {
 	return nil
 }
 
