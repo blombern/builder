@@ -2154,11 +2154,13 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 
 	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
 	// Builder pays relay
+	log.Info("reserve before", "reserve", reserve.builderBalance, "res", reserve.reservedGas)
 	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas/2, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
 	}
-	log.Info("1", "to", env.txs[len(env.txs)-1].To(), "reserve", reserve.builderBalance)
+	log.Info("reserve after", "reserve", reserve.builderBalance, "res", reserve.reservedGas)
+	// log.Info("1", "to", env.txs[len(env.txs)-1].To(), "reserve", reserve.builderBalance)
 	// Placeholder tx, will never go on chain
 	_, err2 := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas/2, reserve.isEOA, big.NewInt(0), w.config.BuilderTxSigningKey, chainData)
 	if err2 != nil {
