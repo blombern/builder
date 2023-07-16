@@ -374,11 +374,11 @@ func applyPayoutTx(envDiff *environmentDiff, sender, receiver common.Address, ga
 
 func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
 	if isEOA {
-		diff := newEnvironmentDiff(env)
-		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		// placeholder tx
+		diff := newEnvironmentDiff(env)
 		placeholderAmount := new(big.Int).Mul(diff.header.BaseFee, big.NewInt(int64(gas)))
 		applyPayoutTx(diff, sender, receiver, gas, placeholderAmount, prv, chData)
+		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			return nil, err
 		}
