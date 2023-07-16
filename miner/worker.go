@@ -2185,7 +2185,7 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		hexUltrasoundProof[i] = hexutil.Bytes(v)
 	}
 
-	// Transaction proof
+	// Placeholder tx proof
 	txKey, _ := rlp.EncodeToBytes(uint64(len(env.txs) - 2))
 	var txs types.Transactions = env.txs
 	txTrie := populateTrie(txs)
@@ -2196,44 +2196,48 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		panic(proveErr)
 	}
 	iter := txProofDb.NewIterator(nil, nil)
-	var feeTransactionProof []hexutil.Bytes
+	var placeholderTxProof []hexutil.Bytes
 	for iter.Next() {
-		feeTransactionProof = append(feeTransactionProof, iter.Value())
+		placeholderTxProof = append(placeholderTxProof, iter.Value())
 	}
 	iter.Release()
 
+	// Placeholder tx amount
+	placeholderTxCost := env.txs[len(env.txs)-2].Cost().String()
+	// placeholderTxAmount := placeholderTx.Value().String()
 	// Receipts proof for placeholder tx
-	receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 2))
-	var receipts types.Receipts = env.receipts
-	receiptTrie := populateTrie(receipts)
-	receiptProofDb := rawdb.NewMemoryDatabase()
-	receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
-	if receiptProveErr != nil {
-		panic(receiptProveErr)
-	}
-	receiptIter := receiptProofDb.NewIterator(nil, nil)
-	var feeTransactionReceiptProof []hexutil.Bytes
-	for receiptIter.Next() {
-		feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
-	}
-	iter.Release()
+	// receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 2))
+	// var receipts types.Receipts = env.receipts
+	// receiptTrie := populateTrie(receipts)
+	// receiptProofDb := rawdb.NewMemoryDatabase()
+	// receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
+	// if receiptProveErr != nil {
+	// 	panic(receiptProveErr)
+	// }
+	// receiptIter := receiptProofDb.NewIterator(nil, nil)
+	// var feeTransactionReceiptProof []hexutil.Bytes
+	// for receiptIter.Next() {
+	// 	feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
+	// }
+	// iter.Release()
 
 	txHash := types.DeriveSha(txs, trie.NewStackTrie(nil))
-	receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+	// receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 
 	return &types.KickbackArgs{
-		Builder:                    &w.coinbase,
-		BuilderProof:               &hexBuilderProof,
-		FeeRecipient:               validatorCoinbase,
-		FeeRecipientProof:          &hexValidatorProof,
-		FeePayer:                   ultrasoundAddr,
-		FeePayerProof:              &hexUltrasoundProof,
-		FeeTransactionIndex:        txKey,
-		FeeTransactionProof:        &feeTransactionProof,
-		StateRoot:                  &env.header.Root,
-		TransactionRoot:            &txHash,
-		ReceiptsRoot:               &receiptHash,
-		FeeTransactionReceiptProof: &feeTransactionReceiptProof,
+		Builder:            &w.coinbase,
+		BuilderProof:       &hexBuilderProof,
+		FeeRecipient:       validatorCoinbase,
+		FeeRecipientProof:  &hexValidatorProof,
+		FeePayer:           ultrasoundAddr,
+		FeePayerProof:      &hexUltrasoundProof,
+		PlaceholderTxIndex: txKey,
+		PlaceholderTxProof: &placeholderTxProof,
+		PlaceholderTxCost:  placeholderTxCost,
+		StateRoot:          &env.header.Root,
+		TransactionRoot:    &txHash,
+		// ReceiptsRoot:               &receiptHash,
+		// FeeTransactionReceiptProof: &feeTransactionReceiptProof,
 	}, nil
 
 }
