@@ -378,6 +378,7 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 		diff := newEnvironmentDiff(env)
 		placeholderAmount := new(big.Int).Mul(diff.header.BaseFee, big.NewInt(int64(gas)))
 		applyPayoutTx(diff, sender, receiver, gas, placeholderAmount, prv, chData)
+		// relay payment
 		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			return nil, err

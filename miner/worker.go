@@ -2186,11 +2186,11 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	}
 
 	// Transaction proof
-	txKey, _ := rlp.EncodeToBytes(uint64(len(env.txs) - 1))
+	txKey, _ := rlp.EncodeToBytes(uint64(len(env.txs) - 2))
 	var txs types.Transactions = env.txs
 	txTrie := populateTrie(txs)
 	txProofDb := rawdb.NewMemoryDatabase()
-	key, _ := rlp.EncodeToBytes(uint(len(txs) - 1))
+	key, _ := rlp.EncodeToBytes(uint(len(txs) - 2))
 	proveErr := txTrie.Prove(key, 0, txProofDb)
 	if proveErr != nil {
 		panic(proveErr)
