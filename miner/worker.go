@@ -2192,11 +2192,12 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	}
 
 	// Placeholder tx proof
-	txKey, _ := rlp.EncodeToBytes(uint64(len(env.txs) - 2))
+	placeholderTxIndex := len(env.txs) - 1
+	txKey, _ := rlp.EncodeToBytes(uint64(placeholderTxIndex))
 	var txs types.Transactions = env.txs
 	txTrie := populateTrie(txs)
 	txProofDb := rawdb.NewMemoryDatabase()
-	key, _ := rlp.EncodeToBytes(uint(len(txs) - 2))
+	key, _ := rlp.EncodeToBytes(uint(placeholderTxIndex))
 	proveErr := txTrie.Prove(key, 0, txProofDb)
 	if proveErr != nil {
 		panic(proveErr)
@@ -2209,7 +2210,7 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	iter.Release()
 
 	// Placeholder tx amount
-	placeholderTxCost := env.txs[len(env.txs)-2].Cost().String()
+	placeholderTxCost := env.txs[placeholderTxIndex].Cost().String()
 	// placeholderTxAmount := placeholderTx.Value().String()
 	// Receipts proof for placeholder tx
 	// receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 2))
