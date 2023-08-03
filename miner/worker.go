@@ -1595,16 +1595,22 @@ func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common
 	printTx(work.txs[len(work.txs)-2])
 	printTx(work.txs[len(work.txs)-1])
 
-	relayTx := work.txs[len(work.txs)-1]
-	receipt := work.receipts[len(work.receipts)-1]
-	if receipt.TxHash != relayTx.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
-		log.Error("proposer payment not successful!", "lastTx", relayTx, "receipt", receipt)
-		return nil, errors.New("last transaction is not proposer payment")
+	relayTx := work.txs[len(work.txs)-2]
+	relayTxTo := relayTx.To()
+	relayTxReceipt := work.receipts[len(work.receipts)-2]
+
+	if relayTxReceipt.TxHash != relayTx.Hash() || relayTxReceipt.Status != types.ReceiptStatusSuccessful || *relayTxTo != ultrasoundAddr {
+		log.Error("relay payment not successful!", "relayTx", relayTx, "receipt", relayTxReceipt)
+		return nil, errors.New("relay payment not successful")
 	}
-	lastTxTo := relayTx.To()
-	if lastTxTo == nil || *lastTxTo != ultrasoundAddr {
-		log.Error("last transaction is not to the proposer!", "lastTx", relayTx)
-		return nil, errors.New("last transaction is not proposer payment")
+
+	placeholderTx := work.txs[len(work.txs)-1]
+	placeholderTxTo := placeholderTx.To()
+	placeholderTxReceipt := work.receipts[len(work.receipts)-1]
+
+	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || *placeholderTxTo != ultrasoundAddr {
+		log.Error("last (placeholder) transaction is not to the relay!", "placeholderTx", relayTx)
+		return nil, errors.New("last transaction is not placeholder tx")
 	}
 
 	return new(big.Int).Set(relayTx.Value()), nil
@@ -2152,7 +2158,7 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	total := new(big.Int).Add(availableFunds, bribe)
 
 	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	// Builder pays relay
+	// Builder pays relay and puts placeholder tx as last tx
 	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
