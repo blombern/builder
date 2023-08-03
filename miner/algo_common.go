@@ -438,7 +438,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	signer := envDiff.baseEnvironment.signer
 	tx, err := types.SignNewTx(prv, signer, &types.DynamicFeeTx{
 		ChainID:   chData.chainConfig.ChainID,
-		Nonce:     envDiff.state.GetNonce(sender) - 1,
+		Nonce:     envDiff.state.GetNonce(sender),
 		GasTipCap: new(big.Int),
 		GasFeeCap: envDiff.header.BaseFee,
 		Gas:       gas,
