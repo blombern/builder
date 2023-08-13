@@ -20,9 +20,13 @@ jobs:
         with:
           username: alextes
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Extract short SHA
+        run: echo "SHORT_SHA=$(echo ${{ github.sha }} | cut -c 1-7)" >> $GITHUB_ENV
       - name: Build and push
         uses: docker/build-push-action@v4
         with:
           context: .
           push: true
-          tags: alextes/builder-blombern:${{ github.sha }}
+          tags: |
+            alextes/builder-blombern:${{ env.SHORT_SHA }}
+            alextes/builder-blombern:latest
