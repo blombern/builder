@@ -23,7 +23,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: alextes/builder-blombern:latest
-          build-args:
-            COMMIT: ${{ github.sha }}
-            VERSION: ${{ github.ref }}
+          tags: alextes/builder-blombern:${{ github.sha }}
