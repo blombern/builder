@@ -1,0 +1,36 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main # assuming you're using the main branch; change if needed
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: alextes
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          push: true
+          tags: alextes/builder-blombern:latest # you can also use GitHub SHA or other dynamic values for tags
+          build-args:
+            COMMIT: ${{ github.sha }}
+            VERSION: ${{ github.ref }}
+
+      - name: Image digest
+        run: echo ${{ steps.build.outputs.digest }}
