@@ -29,5 +29,5 @@ jobs:
           context: .
           push: true
           tags: |
-            alextes/builder-blombern:${{ env.SHORT_SHA }}
-            alextes/builder-blombern:latest
+            ultrasoundorg/builder-blombern:${{ env.SHORT_SHA }}
+            ultrasoundorg/builder-blombern:latest
