@@ -136,7 +136,7 @@ func (r *RemoteRelay) Stop() {}
 
 func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
-	endpoint := r.config.Endpoint + "/relay/ultrasound/v1/builder/blocks"
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -158,7 +158,7 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
-	endpoint := r.config.Endpoint + "/relay/ultrasound/v1/builder/blocks"
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -195,7 +195,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 
 func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, error) {
 	var dst GetValidatorRelayResponse
-	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/ultrasound/v1/builder/validators", nil, &dst)
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst)
 	if err != nil {
 		return nil, err
 	}
