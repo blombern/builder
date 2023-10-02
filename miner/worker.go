@@ -2154,8 +2154,8 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	chainData := chainData{w.chainConfig, w.chain, w.blockList}
 
 	// Bribe
-	bribe := big.NewInt(10000000000000000)
-	total := new(big.Int).Add(availableFunds, bribe)
+	// bribe := big.NewInt(10000000000000000)
+	total := availableFunds
 
 	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
 	// Builder pays relay and puts placeholder tx as last tx
