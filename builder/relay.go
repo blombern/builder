@@ -164,7 +164,7 @@ type KickbackBlockRequest struct {
 	Message          *v1.BidTrace               `json:"message"`
 	ExecutionPayload *capella2.ExecutionPayload `json:"execution_payload"`
 	Signature        string                     `json:"signature"`
-	KickbackArgs     *types.KickbackArgs        `json:"kickback_args"`
+	KickbackArgs     *types.KickbackArgs        `json:"adjustment_data"`
 }
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.KickbackArgs) error {
