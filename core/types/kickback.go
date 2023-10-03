@@ -6,17 +6,13 @@ import (
 )
 
 type KickbackArgs struct {
-	Builder            *common.Address  `json:"builder"`
-	BuilderProof       *[]hexutil.Bytes `json:"builderProof"`
-	FeeRecipient       *common.Address  `json:"feeRecipient"`
-	FeeRecipientProof  *[]hexutil.Bytes `json:"feeRecipientProof"`
-	FeePayer           *common.Address  `json:"feePayer"`
-	FeePayerProof      *[]hexutil.Bytes `json:"feePayerProof"`
-	PlaceholderTxIndex hexutil.Bytes    `json:"placeholderTxIndex"`
-	PlaceholderTxCost  string           `json:"placeholderTxCost"`
-	PlaceholderTxProof *[]hexutil.Bytes `json:"placeholderTxProof"`
-	StateRoot          *common.Hash     `json:"stateRoot"`
-	TransactionRoot    *common.Hash     `json:"transactionRoot"`
-	// ReceiptsRoot               *common.Hash     `json:"receiptsRoot"`
-	// FeeTransactionReceiptProof *[]hexutil.Bytes `json:"receiptsProof"`
+	Builder            *common.Address  `json:"builder_address"`
+	BuilderProof       *[]hexutil.Bytes `json:"builder_proof"`
+	FeeRecipient       *common.Address  `json:"fee_recipient_address"`
+	FeeRecipientProof  *[]hexutil.Bytes `json:"fee_recipient_proof"`
+	FeePayer           *common.Address  `json:"fee_payer_address"`
+	FeePayerProof      *[]hexutil.Bytes `json:"fee_payer_proof"`
+	PlaceholderTxProof *[]hexutil.Bytes `json:"placeholder_transaction_proof"`
+	StateRoot          *common.Hash     `json:"state_root"`
+	TransactionRoot    *common.Hash     `json:"transaction_root"`
 }

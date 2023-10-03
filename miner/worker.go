@@ -2193,7 +2193,7 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 
 	// Placeholder tx proof
 	placeholderTxIndex := len(env.txs) - 1
-	txKey, _ := rlp.EncodeToBytes(uint64(placeholderTxIndex))
+	// txKey, _ := rlp.EncodeToBytes(uint64(placeholderTxIndex))
 	var txs types.Transactions = env.txs
 	txTrie := populateTrie(txs)
 	txProofDb := rawdb.NewMemoryDatabase()
@@ -2210,7 +2210,7 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 	iter.Release()
 
 	// Placeholder tx amount
-	placeholderTxCost := env.txs[placeholderTxIndex].Cost().String()
+	// placeholderTxCost := env.txs[placeholderTxIndex].Cost().String()
 	// placeholderTxAmount := placeholderTx.Value().String()
 	// Receipts proof for placeholder tx
 	// receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 2))
@@ -2238,13 +2238,9 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		FeeRecipientProof:  &hexValidatorProof,
 		FeePayer:           ultrasoundAddr,
 		FeePayerProof:      &hexUltrasoundProof,
-		PlaceholderTxIndex: txKey,
 		PlaceholderTxProof: &placeholderTxProof,
-		PlaceholderTxCost:  placeholderTxCost,
 		StateRoot:          &env.header.Root,
 		TransactionRoot:    &txHash,
-		// ReceiptsRoot:               &receiptHash,
-		// FeeTransactionReceiptProof: &feeTransactionReceiptProof,
 	}, nil
 
 }
