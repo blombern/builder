@@ -116,7 +116,7 @@ func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ Validat
 	return r.submitBlock(msg)
 }
 
-func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData, _ *types.KickbackArgs) error {
+func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData, _ *types.AdjustmentData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 
 	return r.submitBlockCapella(msg)

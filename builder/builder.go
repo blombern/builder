@@ -47,7 +47,7 @@ type ValidatorData struct {
 
 type IRelay interface {
 	SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData, kba *types.KickbackArgs) error
+	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData, kba *types.AdjustmentData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -199,7 +199,7 @@ func (b *Builder) Stop() error {
 
 func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, kickbackArgs *types.KickbackArgs) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, kickbackArgs *types.AdjustmentData) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
 		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs, kickbackArgs); err != nil {
 			return err
@@ -277,7 +277,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 
 func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, kickbackArgs *types.KickbackArgs) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, kickbackArgs *types.AdjustmentData) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -389,7 +389,7 @@ type blockQueueEntry struct {
 	commitedBundles []types.SimulatedBundle
 	allBundles      []types.SimulatedBundle
 	usedSbundles    []types.UsedSBundle
-	kickbackArgs    *types.KickbackArgs
+	kickbackArgs    *types.AdjustmentData
 }
 
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
@@ -438,7 +438,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
-		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, kickbackArgs *types.KickbackArgs,
+		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, kickbackArgs *types.AdjustmentData,
 	) {
 		if ctx.Err() != nil {
 			return

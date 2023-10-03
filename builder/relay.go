@@ -164,10 +164,10 @@ type KickbackBlockRequest struct {
 	Message          *v1.BidTrace               `json:"message"`
 	ExecutionPayload *capella2.ExecutionPayload `json:"execution_payload"`
 	Signature        string                     `json:"signature"`
-	KickbackArgs     *types.KickbackArgs        `json:"adjustment_data"`
+	KickbackArgs     *types.AdjustmentData      `json:"adjustment_data"`
 }
 
-func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.KickbackArgs) error {
+func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.AdjustmentData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
 	// endpoint := r.config.Endpoint + "/relay/ultrasound/blocks"

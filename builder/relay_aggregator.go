@@ -62,7 +62,7 @@ func (r *RemoteRelayAggregator) SubmitBlock(msg *bellatrix.SubmitBlockRequest, r
 	return nil
 }
 
-func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData, kickbackArgs *types.KickbackArgs) error {
+func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData, kickbackArgs *types.AdjustmentData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
 

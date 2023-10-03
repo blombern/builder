@@ -191,7 +191,7 @@ type newPayloadResult struct {
 	err          error
 	block        *types.Block
 	fees         *big.Int
-	kickbackArgs *types.KickbackArgs
+	kickbackArgs *types.AdjustmentData
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -1471,7 +1471,7 @@ func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle,
 }
 
 // generateWork generates a sealing block based on the given parameters.
-func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *types.KickbackArgs, error) {
+func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *types.AdjustmentData, error) {
 	start := time.Now()
 	validatorCoinbase := params.coinbase
 	// Set builder coinbase to be passed to beacon header
@@ -1484,7 +1484,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 	defer work.discard()
 
 	finalizeFn := func(env *environment, orderCloseTime time.Time,
-		blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool) (*types.Block, *big.Int, *types.KickbackArgs, error) {
+		blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool) (*types.Block, *big.Int, *types.AdjustmentData, error) {
 		block, profit, kickbackArgs, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
@@ -1551,7 +1551,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
 }
 
-func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, *types.KickbackArgs, error) {
+func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, *types.AdjustmentData, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, withdrawals)
 	if err != nil {
 		return nil, nil, nil, err
@@ -1571,7 +1571,7 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return nil, nil, nil, err
 	}
 
-	kickbackArgs, err := w.produceKickbackArgs(work, &validatorCoinbase, &ultrasoundAddr)
+	kickbackArgs, err := w.computeAdjustmentData(work, &validatorCoinbase, &ultrasoundAddr)
 	if err != nil {
 		log.Error("Failed to produce kickback args", "err", err)
 		return block, blockProfit, nil, nil
@@ -2171,7 +2171,7 @@ func (w *worker) placeholderTxCommit(env *environment, validatorCoinbase *common
 	return nil
 }
 
-func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common.Address, ultrasoundAddr *common.Address) (*types.KickbackArgs, error) {
+func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *common.Address, feePayerAddr *common.Address) (*types.AdjustmentData, error) {
 	// Account proofs
 	builderProof, _ := env.state.GetProof(w.coinbase)
 	hexBuilderProof := make([]hexutil.Bytes, len(builderProof))
@@ -2179,68 +2179,44 @@ func (w *worker) produceKickbackArgs(env *environment, validatorCoinbase *common
 		hexBuilderProof[i] = hexutil.Bytes(v)
 	}
 
-	validatorProof, _ := env.state.GetProof(*validatorCoinbase)
-	hexValidatorProof := make([]hexutil.Bytes, len(validatorProof))
-	for i, v := range validatorProof {
-		hexValidatorProof[i] = hexutil.Bytes(v)
+	feeRecipientProof, _ := env.state.GetProof(*validatorCoinbase)
+	hexFeeRecipientProof := make([]hexutil.Bytes, len(feeRecipientProof))
+	for i, v := range feeRecipientProof {
+		hexFeeRecipientProof[i] = hexutil.Bytes(v)
 	}
 
-	ultrasoundProof, _ := env.state.GetProof(*ultrasoundAddr)
-	hexUltrasoundProof := make([]hexutil.Bytes, len(ultrasoundProof))
-	for i, v := range ultrasoundProof {
-		hexUltrasoundProof[i] = hexutil.Bytes(v)
+	feePayerProof, _ := env.state.GetProof(*feePayerAddr)
+	hexFeePayerProof := make([]hexutil.Bytes, len(feePayerProof))
+	for i, v := range feePayerProof {
+		hexFeePayerProof[i] = hexutil.Bytes(v)
 	}
 
 	// Placeholder tx proof
-	placeholderTxIndex := len(env.txs) - 1
-	// txKey, _ := rlp.EncodeToBytes(uint64(placeholderTxIndex))
-	var txs types.Transactions = env.txs
-	txTrie := populateTrie(txs)
-	txProofDb := rawdb.NewMemoryDatabase()
-	key, _ := rlp.EncodeToBytes(uint(placeholderTxIndex))
-	proveErr := txTrie.Prove(key, 0, txProofDb)
-	if proveErr != nil {
-		panic(proveErr)
-	}
-	iter := txProofDb.NewIterator(nil, nil)
-	var placeholderTxProof []hexutil.Bytes
+	placeholderTransactionIndex := len(env.txs) - 1
+	var transactions types.Transactions = env.txs
+	transactionTrie := populateTrie(transactions)
+	transactionProofDb := rawdb.NewMemoryDatabase()
+	transactionKey, _ := rlp.EncodeToBytes(uint(placeholderTransactionIndex))
+	transactionTrie.Prove(transactionKey, 0, transactionProofDb)
+	iter := transactionProofDb.NewIterator(nil, nil)
+	var placeholderTransactionProof []hexutil.Bytes
 	for iter.Next() {
-		placeholderTxProof = append(placeholderTxProof, iter.Value())
+		placeholderTransactionProof = append(placeholderTransactionProof, iter.Value())
 	}
 	iter.Release()
 
-	// Placeholder tx amount
-	// placeholderTxCost := env.txs[placeholderTxIndex].Cost().String()
-	// placeholderTxAmount := placeholderTx.Value().String()
-	// Receipts proof for placeholder tx
-	// receiptKey, _ := rlp.EncodeToBytes(uint64(len(env.receipts) - 2))
-	// var receipts types.Receipts = env.receipts
-	// receiptTrie := populateTrie(receipts)
-	// receiptProofDb := rawdb.NewMemoryDatabase()
-	// receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
-	// if receiptProveErr != nil {
-	// 	panic(receiptProveErr)
-	// }
-	// receiptIter := receiptProofDb.NewIterator(nil, nil)
-	// var feeTransactionReceiptProof []hexutil.Bytes
-	// for receiptIter.Next() {
-	// 	feeTransactionReceiptProof = append(feeTransactionReceiptProof, iter.Value())
-	// }
-	// iter.Release()
+	transactionsRoot := types.DeriveSha(transactions, trie.NewStackTrie(nil))
 
-	txHash := types.DeriveSha(txs, trie.NewStackTrie(nil))
-	// receiptHash := types.DeriveSha(receipts, trie.NewStackTrie(nil))
-
-	return &types.KickbackArgs{
-		Builder:            &w.coinbase,
-		BuilderProof:       &hexBuilderProof,
-		FeeRecipient:       validatorCoinbase,
-		FeeRecipientProof:  &hexValidatorProof,
-		FeePayer:           ultrasoundAddr,
-		FeePayerProof:      &hexUltrasoundProof,
-		PlaceholderTxProof: &placeholderTxProof,
-		StateRoot:          &env.header.Root,
-		TransactionRoot:    &txHash,
+	return &types.AdjustmentData{
+		BuilderAddress:      &w.coinbase,
+		BuilderProof:        &hexBuilderProof,
+		FeeRecipientAddress: validatorCoinbase,
+		FeeRecipientProof:   &hexFeeRecipientProof,
+		FeePayerAddress:     feePayerAddr,
+		FeePayerProof:       &hexFeePayerProof,
+		PlaceholderTxProof:  &placeholderTransactionProof,
+		StateRoot:           &env.header.Root,
+		TransactionsRoot:    &transactionsRoot,
 	}, nil
 
 }
