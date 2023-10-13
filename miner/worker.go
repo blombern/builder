@@ -1603,7 +1603,10 @@ func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common
 		return nil, errors.New("last transaction is not placeholder tx")
 	}
 
-	return new(big.Int).Set(placeholderTx.Value()), nil
+	blockProfit := *placeholderTx.Value()
+	placeholderTx.Value().SetUint64(0)
+
+	return new(big.Int).Set(&blockProfit), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
