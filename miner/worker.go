@@ -1592,28 +1592,18 @@ func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common
 		return nil, errors.New("no proposer payment receipt")
 	}
 
-	printTx(work.txs[len(work.txs)-2])
 	printTx(work.txs[len(work.txs)-1])
-
-	relayTx := work.txs[len(work.txs)-2]
-	relayTxTo := relayTx.To()
-	relayTxReceipt := work.receipts[len(work.receipts)-2]
-
-	if relayTxReceipt.TxHash != relayTx.Hash() || relayTxReceipt.Status != types.ReceiptStatusSuccessful || *relayTxTo != ultrasoundAddr {
-		log.Error("relay payment not successful!", "relayTx", relayTx, "receipt", relayTxReceipt)
-		return nil, errors.New("relay payment not successful")
-	}
 
 	placeholderTx := work.txs[len(work.txs)-1]
 	placeholderTxTo := placeholderTx.To()
 	placeholderTxReceipt := work.receipts[len(work.receipts)-1]
 
 	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || *placeholderTxTo != ultrasoundAddr {
-		log.Error("last (placeholder) transaction is not to the relay!", "placeholderTx", relayTx)
+		log.Error("last (placeholder) transaction is not to the relay!", "placeholderTx", placeholderTx)
 		return nil, errors.New("last transaction is not placeholder tx")
 	}
 
-	return new(big.Int).Set(relayTx.Value()), nil
+	return new(big.Int).Set(placeholderTx.Value()), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
