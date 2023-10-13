@@ -1565,55 +1565,45 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil, nil
 	}
 
-	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	blockProfit, err := w.checkUltrasoundPayment(work, ultrasoundAddr)
+	blockProfit, err := w.checkProposerPayment(work, &validatorCoinbase)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 
-	kickbackArgs, err := w.computeAdjustmentData(work, &validatorCoinbase, &ultrasoundAddr)
+	feePayerAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	adjustmentData, err := w.computeAdjustmentData(work, &validatorCoinbase, &feePayerAddr)
 	if err != nil {
 		log.Error("Failed to produce kickback args", "err", err)
 		return block, blockProfit, nil, nil
 
 	}
 
-	return block, blockProfit, kickbackArgs, nil
+	return block, blockProfit, adjustmentData, nil
 }
 
 func printTx(tx *types.Transaction) {
 	log.Info("tx", "hash", tx.Hash(), "to", tx.To(), "value", tx.Value(), "gas", tx.Gas(), "gasPrice", tx.GasPrice())
 }
 
-func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common.Address) (*big.Int, error) {
+func (w *worker) checkProposerPayment(work *environment, validatorCoinbase *common.Address) (*big.Int, error) {
 	if len(work.txs) == 0 {
 		return nil, errors.New("no proposer payment tx")
 	} else if len(work.receipts) == 0 {
 		return nil, errors.New("no proposer payment receipt")
 	}
 
-	printTx(work.txs[len(work.txs)-2])
 	printTx(work.txs[len(work.txs)-1])
-
-	relayTx := work.txs[len(work.txs)-2]
-	relayTxTo := relayTx.To()
-	relayTxReceipt := work.receipts[len(work.receipts)-2]
-
-	if relayTxReceipt.TxHash != relayTx.Hash() || relayTxReceipt.Status != types.ReceiptStatusSuccessful || *relayTxTo != ultrasoundAddr {
-		log.Error("relay payment not successful!", "relayTx", relayTx, "receipt", relayTxReceipt)
-		return nil, errors.New("relay payment not successful")
-	}
 
 	placeholderTx := work.txs[len(work.txs)-1]
 	placeholderTxTo := placeholderTx.To()
 	placeholderTxReceipt := work.receipts[len(work.receipts)-1]
 
-	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || *placeholderTxTo != ultrasoundAddr {
-		log.Error("last (placeholder) transaction is not to the relay!", "placeholderTx", relayTx)
+	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || placeholderTxTo == nil || *placeholderTxTo != *validatorCoinbase {
+		log.Error("last (placeholder) transaction is invalid", "placeholderTx", placeholderTx)
 		return nil, errors.New("last transaction is not placeholder tx")
 	}
 
-	return new(big.Int).Set(relayTx.Value()), nil
+	return new(big.Int).Set(placeholderTx.Value()), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
@@ -2157,17 +2147,10 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	// bribe := big.NewInt(10000000000000000)
 	total := availableFunds
 
-	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	// Builder pays relay and puts placeholder tx as last tx
-	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
+	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
 	}
-	log.Info("2", "to", env.txs[len(env.txs)-1].To())
-	return nil
-}
-
-func (w *worker) placeholderTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation) error {
 	return nil
 }
 
