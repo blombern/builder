@@ -1566,7 +1566,7 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 	}
 
 	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	blockProfit, err := w.checkUltrasoundPayment(work, ultrasoundAddr)
+	blockProfit, err := w.checkProposerPayment(work, &validatorCoinbase)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -1585,7 +1585,7 @@ func printTx(tx *types.Transaction) {
 	log.Info("tx", "hash", tx.Hash(), "to", tx.To(), "value", tx.Value(), "gas", tx.Gas(), "gasPrice", tx.GasPrice())
 }
 
-func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common.Address) (*big.Int, error) {
+func (w *worker) checkProposerPayment(work *environment, validatorCoinbase *common.Address) (*big.Int, error) {
 	if len(work.txs) == 0 {
 		return nil, errors.New("no proposer payment tx")
 	} else if len(work.receipts) == 0 {
@@ -1598,7 +1598,7 @@ func (w *worker) checkUltrasoundPayment(work *environment, ultrasoundAddr common
 	placeholderTxTo := placeholderTx.To()
 	placeholderTxReceipt := work.receipts[len(work.receipts)-1]
 
-	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || *placeholderTxTo != ultrasoundAddr {
+	if placeholderTxReceipt.TxHash != placeholderTx.Hash() || placeholderTxReceipt.Status != types.ReceiptStatusSuccessful || *placeholderTxTo != *validatorCoinbase {
 		log.Error("last (placeholder) transaction is not to the relay!", "placeholderTx", placeholderTx)
 		return nil, errors.New("last transaction is not placeholder tx")
 	}
@@ -2150,9 +2150,9 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	// bribe := big.NewInt(10000000000000000)
 	total := availableFunds
 
-	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
+	// ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
 	// Builder pays relay and puts placeholder tx as last tx
-	_, err := insertPayoutTx(env, sender, ultrasoundAddr, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
+	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, total, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
 	}
