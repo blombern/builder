@@ -1603,10 +1603,7 @@ func (w *worker) checkProposerPayment(work *environment, validatorCoinbase *comm
 		return nil, errors.New("last transaction is not placeholder tx")
 	}
 
-	blockProfit := *placeholderTx.Value()
-	placeholderTx.Value().SetUint64(0)
-
-	return new(big.Int).Set(&blockProfit), nil
+	return new(big.Int).Set(placeholderTx.Value()), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block
