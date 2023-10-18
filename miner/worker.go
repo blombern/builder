@@ -2195,18 +2195,37 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	}
 	iter.Release()
 
+	// Placeholder tx receipt proof
+	receiptKey, _ := rlp.EncodeToBytes(uint64(placeholderTransactionIndex))
+	var receipts types.Receipts = env.receipts
+	receiptTrie := populateTrie(receipts)
+	receiptProofDb := rawdb.NewMemoryDatabase()
+	receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
+	if receiptProveErr != nil {
+		panic(receiptProveErr)
+	}
+	receiptIter := receiptProofDb.NewIterator(nil, nil)
+	var placeholderReceiptProof []hexutil.Bytes
+	for receiptIter.Next() {
+		placeholderReceiptProof = append(placeholderReceiptProof, iter.Value())
+	}
+	iter.Release()
+
 	transactionsRoot := types.DeriveSha(transactions, trie.NewStackTrie(nil))
+	receiptsRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 
 	return &types.AdjustmentData{
-		BuilderAddress:      &w.coinbase,
-		BuilderProof:        &hexBuilderProof,
-		FeeRecipientAddress: validatorCoinbase,
-		FeeRecipientProof:   &hexFeeRecipientProof,
-		FeePayerAddress:     feePayerAddr,
-		FeePayerProof:       &hexFeePayerProof,
-		PlaceholderTxProof:  &placeholderTransactionProof,
-		StateRoot:           &env.header.Root,
-		TransactionsRoot:    &transactionsRoot,
+		BuilderAddress:          &w.coinbase,
+		BuilderProof:            &hexBuilderProof,
+		FeeRecipientAddress:     validatorCoinbase,
+		FeeRecipientProof:       &hexFeeRecipientProof,
+		FeePayerAddress:         feePayerAddr,
+		FeePayerProof:           &hexFeePayerProof,
+		PlaceholderTxProof:      &placeholderTransactionProof,
+		PlaceholderReceiptProof: &placeholderReceiptProof,
+		StateRoot:               &env.header.Root,
+		TransactionsRoot:        &transactionsRoot,
+		ReceiptsRoot:            &receiptsRoot,
 	}, nil
 
 }
