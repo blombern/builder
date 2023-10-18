@@ -1491,7 +1491,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 			return nil, nil, nil, err
 		}
 		if kickbackArgs != nil {
-			log.Info("Successfully produced kickback args", "kickbackArgs", kickbackArgs)
+			fmt.Printf("%+v\n", kickbackArgs)
 
 		}
 
