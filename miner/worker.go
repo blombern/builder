@@ -1552,8 +1552,6 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 }
 
 func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, *types.AdjustmentData, error) {
-	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
-	work.header.Coinbase = ultrasoundAddr
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, withdrawals)
 	if err != nil {
 		return nil, nil, nil, err
@@ -1567,6 +1565,7 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil, nil
 	}
 
+	ultrasoundAddr := common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb")
 	blockProfit, err := w.checkProposerPayment(work, &validatorCoinbase)
 	if err != nil {
 		return nil, nil, nil, err
