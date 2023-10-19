@@ -245,9 +245,10 @@ type worker struct {
 	remoteUncles map[common.Hash]*types.Block // A set of side blocks as the possible uncle blocks.
 	unconfirmed  *unconfirmedBlocks           // A set of locally mined blocks pending canonicalness confirmations.
 
-	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
-	coinbase common.Address
-	extra    []byte
+	mu            sync.RWMutex // The lock used to protect the coinbase and extra fields
+	coinbase      common.Address
+	relayCoinbase common.Address
+	extra         []byte
 
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
@@ -357,6 +358,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
+		relayCoinbase:      common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb"),
 		flashbots:          flashbots,
 	}
 
@@ -1475,7 +1477,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, *
 	start := time.Now()
 	validatorCoinbase := params.coinbase
 	// Set builder coinbase to be passed to beacon header
-	params.coinbase = w.coinbase
+	params.coinbase = w.relayCoinbase
 
 	work, err := w.prepareWork(params)
 	if err != nil {
