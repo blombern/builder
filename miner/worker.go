@@ -2095,6 +2095,7 @@ func totalFees(block *types.Block, env *environment) *big.Int {
 
 type proposerTxReservation struct {
 	builderBalance *big.Int
+	relayBalance   *big.Int
 	reservedGas    uint64
 	isEOA          bool
 }
@@ -2108,6 +2109,7 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 	sender := w.coinbase
 	w.mu.Unlock()
 	builderBalance := env.state.GetBalance(sender)
+	relayBalance := env.state.GetBalance(w.relayCoinbase)
 
 	chainData := chainData{w.chainConfig, w.chain, w.blockList}
 	gas, isEOA, err := estimatePayoutTxGas(env, sender, *validatorCoinbase, w.config.BuilderTxSigningKey, chainData)
@@ -2122,6 +2124,7 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 
 	return &proposerTxReservation{
 		builderBalance: builderBalance,
+		relayBalance:   relayBalance,
 		reservedGas:    gas,
 		isEOA:          isEOA,
 	}, nil
@@ -2135,9 +2138,9 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	w.mu.Lock()
 	sender := w.coinbase
 	w.mu.Unlock()
-	builderBalance := env.state.GetBalance(sender)
+	relayBalance := env.state.GetBalance(w.relayCoinbase)
 
-	availableFunds := new(big.Int).Sub(builderBalance, reserve.builderBalance)
+	availableFunds := new(big.Int).Sub(relayBalance, reserve.relayBalance)
 	if availableFunds.Sign() <= 0 {
 		return errors.New("builder balance decreased")
 	}
