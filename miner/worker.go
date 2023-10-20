@@ -2193,28 +2193,25 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	transactionProofDb := rawdb.NewMemoryDatabase()
 	transactionKey, _ := rlp.EncodeToBytes(uint(placeholderTransactionIndex))
 	transactionTrie.Prove(transactionKey, 0, transactionProofDb)
-	iter := transactionProofDb.NewIterator(nil, nil)
+	transactionIter := transactionProofDb.NewIterator(nil, nil)
 	var placeholderTransactionProof []hexutil.Bytes
-	for iter.Next() {
-		placeholderTransactionProof = append(placeholderTransactionProof, iter.Value())
+	for transactionIter.Next() {
+		placeholderTransactionProof = append(placeholderTransactionProof, transactionIter.Value())
 	}
-	iter.Release()
+	transactionIter.Release()
 
 	// Placeholder tx receipt proof
 	receiptKey, _ := rlp.EncodeToBytes(uint64(placeholderTransactionIndex))
 	var receipts types.Receipts = env.receipts
 	receiptTrie := populateTrie(receipts)
 	receiptProofDb := rawdb.NewMemoryDatabase()
-	receiptProveErr := receiptTrie.Prove(receiptKey, 0, receiptProofDb)
-	if receiptProveErr != nil {
-		panic(receiptProveErr)
-	}
+	receiptTrie.Prove(receiptKey, 0, receiptProofDb)
 	receiptIter := receiptProofDb.NewIterator(nil, nil)
 	var placeholderReceiptProof []hexutil.Bytes
 	for receiptIter.Next() {
-		placeholderReceiptProof = append(placeholderReceiptProof, iter.Value())
+		placeholderReceiptProof = append(placeholderReceiptProof, receiptIter.Value())
 	}
-	iter.Release()
+	receiptIter.Release()
 
 	transactionsRoot := types.DeriveSha(transactions, trie.NewStackTrie(nil))
 	receiptsRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
