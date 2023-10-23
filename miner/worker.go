@@ -2214,7 +2214,7 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	receiptsRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
 
 	elapsed := time.Since(start).Microseconds()
-	println("Function took:", elapsed, "microseconds")
+	println("Adjustment data computation took:", elapsed, "microseconds")
 
 	return &types.AdjustmentData{
 		BuilderAddress:          &w.coinbase,
