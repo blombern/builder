@@ -2162,11 +2162,8 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	return nil
 }
 
-func (w *worker) placeholderTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation) error {
-	return nil
-}
-
 func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *common.Address, feePayerAddr *common.Address) (*types.AdjustmentData, error) {
+	start := time.Now()
 	// Account proofs
 	builderProof, _ := env.state.GetProof(w.coinbase)
 	hexBuilderProof := make([]hexutil.Bytes, len(builderProof))
@@ -2215,6 +2212,9 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 
 	transactionsRoot := types.DeriveSha(transactions, trie.NewStackTrie(nil))
 	receiptsRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+
+	elapsed := time.Since(start).Microseconds()
+	println("Function took:", elapsed, "microseconds")
 
 	return &types.AdjustmentData{
 		BuilderAddress:          &w.coinbase,
