@@ -171,13 +171,13 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
 	// endpoint := r.config.Endpoint + "/relay/ultrasound/blocks"
-	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
-	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=true"
-	}
-	if kickbackArgs != nil {
-		endpoint = endpoint + "&adjustments=true"
-	}
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks?cancellations=false&adjustments=true"
+	// if r.cancellationsEnabled {
+	// 	endpoint = endpoint + "?cancellations=true"
+	// }
+	// if kickbackArgs != nil {
+	// 	endpoint = endpoint + "&adjustments=true"
+	// }
 
 	if r.config.SszEnabled {
 		bodyBytes, err := msg.MarshalSSZ()
