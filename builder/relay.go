@@ -175,6 +175,9 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
+	if kickbackArgs != nil {
+		endpoint = endpoint + "&adjustments=true"
+	}
 
 	if r.config.SszEnabled {
 		bodyBytes, err := msg.MarshalSSZ()
