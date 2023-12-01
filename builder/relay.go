@@ -2,19 +2,15 @@ package builder
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
-	v1 "github.com/attestantio/go-builder-client/api/v1"
-	capella2 "github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
@@ -160,79 +156,28 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 	return nil
 }
 
-type KickbackBlockRequest struct {
-	Message          *v1.BidTrace               `json:"message"`
-	ExecutionPayload *capella2.ExecutionPayload `json:"execution_payload"`
-	Signature        string                     `json:"signature"`
-	KickbackArgs     *types.AdjustmentData      `json:"adjustment_data"`
-}
-
-func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, kickbackArgs *types.AdjustmentData) error {
+func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData, adjustmentData *types.AdjustmentData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
-	// endpoint := r.config.Endpoint + "/relay/ultrasound/blocks"
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks?cancellations=false&adjustments=true"
-	// if r.cancellationsEnabled {
-	// 	endpoint = endpoint + "?cancellations=true"
-	// }
-	// if kickbackArgs != nil {
-	// 	endpoint = endpoint + "&adjustments=true"
-	// }
+	body := &types.AdjustableSubmitBlockRequest{
+		Message:          msg.Message,
+		ExecutionPayload: msg.ExecutionPayload,
+		Signature:        msg.Signature,
+		AdjustmentData:   adjustmentData,
+	}
 
-	if r.config.SszEnabled {
-		bodyBytes, err := msg.MarshalSSZ()
-		if err != nil {
-			return fmt.Errorf("error marshaling ssz: %w", err)
-		}
-		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
-		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
-	} else {
-		message := &KickbackBlockRequest{
-			Message:          msg.Message,
-			ExecutionPayload: msg.ExecutionPayload,
-			Signature:        fmt.Sprintf("%#x", msg.Signature),
-			KickbackArgs:     kickbackArgs,
-		}
-		if message.KickbackArgs != nil {
-			messageJson, err := json.Marshal(message)
-			if err != nil {
-				log.Error("Error during marshaling: %v", err)
-			}
-
-			// Append the newline character at the end of JSON to comply with ndjson format
-			messageJson = append(messageJson, '\n')
-
-			// Open the file in append mode
-			file, err := os.OpenFile("kickback_block_requests.ndjson", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Error("Error opening file: %v", err)
-			}
-
-			// Write JSON to file
-			_, err = file.Write(messageJson)
-			if err != nil {
-				log.Error("Error writing to file: %v", err)
-			}
-
-			// Close the file
-			if err := file.Close(); err != nil {
-				log.Error("Error closing file: %v", err)
-			}
-
-		}
-		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, message, nil)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
+	bodyBytes, err := body.MarshalSSZ()
+	if err != nil {
+		return fmt.Errorf("error marshaling ssz: %w", err)
+	}
+	log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
+	code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
+	if err != nil {
+		return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
+	}
+	if code > 299 {
+		return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 	}
 
 	if r.localRelay != nil {

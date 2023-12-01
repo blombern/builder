@@ -2166,19 +2166,19 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	start := time.Now()
 	// Account proofs
 	builderProof, _ := env.state.GetProof(w.coinbase)
-	hexBuilderProof := make([]hexutil.Bytes, len(builderProof))
+	hexBuilderProof := make([][]byte, len(builderProof))
 	for i, v := range builderProof {
 		hexBuilderProof[i] = hexutil.Bytes(v)
 	}
 
 	feeRecipientProof, _ := env.state.GetProof(*validatorCoinbase)
-	hexFeeRecipientProof := make([]hexutil.Bytes, len(feeRecipientProof))
+	hexFeeRecipientProof := make([][]byte, len(feeRecipientProof))
 	for i, v := range feeRecipientProof {
 		hexFeeRecipientProof[i] = hexutil.Bytes(v)
 	}
 
 	feePayerProof, _ := env.state.GetProof(*feePayerAddr)
-	hexFeePayerProof := make([]hexutil.Bytes, len(feePayerProof))
+	hexFeePayerProof := make([][]byte, len(feePayerProof))
 	for i, v := range feePayerProof {
 		hexFeePayerProof[i] = hexutil.Bytes(v)
 	}
@@ -2191,7 +2191,7 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	transactionKey, _ := rlp.EncodeToBytes(uint(placeholderTransactionIndex))
 	transactionTrie.Prove(transactionKey, 0, transactionProofDb)
 	transactionIter := transactionProofDb.NewIterator(nil, nil)
-	var placeholderTransactionProof []hexutil.Bytes
+	var placeholderTransactionProof [][]byte
 	for transactionIter.Next() {
 		placeholderTransactionProof = append(placeholderTransactionProof, transactionIter.Value())
 	}
@@ -2204,7 +2204,7 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	receiptProofDb := rawdb.NewMemoryDatabase()
 	receiptTrie.Prove(receiptKey, 0, receiptProofDb)
 	receiptIter := receiptProofDb.NewIterator(nil, nil)
-	var placeholderReceiptProof []hexutil.Bytes
+	var placeholderReceiptProof [][]byte
 	for receiptIter.Next() {
 		placeholderReceiptProof = append(placeholderReceiptProof, receiptIter.Value())
 	}
@@ -2217,17 +2217,17 @@ func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *comm
 	println("Adjustment data computation took:", elapsed, "microseconds")
 
 	return &types.AdjustmentData{
-		BuilderAddress:          &w.coinbase,
-		BuilderProof:            &hexBuilderProof,
-		FeeRecipientAddress:     validatorCoinbase,
-		FeeRecipientProof:       &hexFeeRecipientProof,
-		FeePayerAddress:         feePayerAddr,
-		FeePayerProof:           &hexFeePayerProof,
-		PlaceholderTxProof:      &placeholderTransactionProof,
-		PlaceholderReceiptProof: &placeholderReceiptProof,
-		StateRoot:               &env.header.Root,
-		TransactionsRoot:        &transactionsRoot,
-		ReceiptsRoot:            &receiptsRoot,
+		BuilderAddress:          w.coinbase,
+		BuilderProof:            hexBuilderProof,
+		FeeRecipientAddress:     *validatorCoinbase,
+		FeeRecipientProof:       hexFeeRecipientProof,
+		FeePayerAddress:         *feePayerAddr,
+		FeePayerProof:           hexFeePayerProof,
+		PlaceholderTxProof:      placeholderTransactionProof,
+		PlaceholderReceiptProof: placeholderReceiptProof,
+		StateRoot:               env.header.Root,
+		TransactionsRoot:        transactionsRoot,
+		ReceiptsRoot:            receiptsRoot,
 	}, nil
 
 }
