@@ -10,7 +10,7 @@ import (
 	"time"
 
 	builderSpec "github.com/attestantio/go-builder-client/spec"
-	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
 )
@@ -134,43 +134,41 @@ func (r *RemoteRelay) Start() error {
 
 func (r *RemoteRelay) Stop() {}
 
-func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, _ ValidatorData) error {
+func makeAdjustableSubmission(msg *builderSpec.VersionedSubmitBlockRequest, adjustmentData *types.AdjustmentData) (*types.AdjustableSubmitBlockRequest, error) {
+	if msg.Deneb != nil {
+		return &types.AdjustableSubmitBlockRequest{
+			Message:          msg.Deneb.Message,
+			ExecutionPayload: msg.Deneb.ExecutionPayload,
+			BlobsBundle:      msg.Deneb.BlobsBundle,
+			Signature:        msg.Deneb.Signature,
+			AdjustmentData:   adjustmentData,
+		}, nil
+	} else {
+		return nil, fmt.Errorf("Expected deneb submission, got  %d", msg.Version)
+	}
+}
+
+func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, _ ValidatorData, adjustmentData *types.AdjustmentData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
-	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
-	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=true"
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks?cancellations=false&adjustments=true"
+
+	adjustableSubmission, submissionErr := makeAdjustableSubmission(msg, adjustmentData)
+	if submissionErr != nil {
+		return submissionErr
 	}
 
 	var code int
 	var err error
 	if r.config.SszEnabled {
 		var bodyBytes []byte
-		switch msg.Version {
-		case spec.DataVersionBellatrix:
-			bodyBytes, err = msg.Bellatrix.MarshalSSZ()
-		case spec.DataVersionCapella:
-			bodyBytes, err = msg.Capella.MarshalSSZ()
-		case spec.DataVersionDeneb:
-			bodyBytes, err = msg.Deneb.MarshalSSZ()
-		default:
-			return fmt.Errorf("unknown data version %d", msg.Version)
-		}
+		bodyBytes, err = adjustableSubmission.MarshalSSZ()
 		if err != nil {
 			return fmt.Errorf("error marshaling ssz: %w", err)
 		}
 		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
 		code, err = SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
 	} else {
-		switch msg.Version {
-		case spec.DataVersionBellatrix:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Bellatrix, nil)
-		case spec.DataVersionCapella:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Capella, nil)
-		case spec.DataVersionDeneb:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Deneb, nil)
-		default:
-			return fmt.Errorf("unknown data version %d", msg.Version)
-		}
+		code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, adjustableSubmission, nil)
 	}
 
 	if err != nil {

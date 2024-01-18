@@ -360,6 +360,29 @@ func (s *StateDB) GetCommittedState(addr common.Address, hash common.Hash) commo
 	return common.Hash{}
 }
 
+type proofList [][]byte
+
+func (n *proofList) Put(key []byte, value []byte) error {
+	*n = append(*n, value)
+	return nil
+}
+
+func (n *proofList) Delete(key []byte) error {
+	panic("not supported")
+}
+
+// GetProof returns the Merkle proof for a given account.
+func (s *StateDB) GetProof(addr common.Address) ([][]byte, error) {
+	return s.GetProofByHash(crypto.Keccak256Hash(addr.Bytes()))
+}
+
+// GetProofByHash returns the Merkle proof for a given account.
+func (s *StateDB) GetProofByHash(addrHash common.Hash) ([][]byte, error) {
+	var proof proofList
+	err := s.trie.Prove(addrHash[:], &proof)
+	return proof, err
+}
+
 // Database retrieves the low level database supporting the lower level trie ops.
 func (s *StateDB) Database() Database {
 	return s.db

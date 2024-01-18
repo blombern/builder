@@ -17,6 +17,7 @@
 package miner
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"math/big"
@@ -26,10 +27,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -40,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -164,10 +168,11 @@ type newWorkReq struct {
 
 // newPayloadResult is the result of payload generation.
 type newPayloadResult struct {
-	err      error
-	block    *types.Block
-	fees     *big.Int               // total block fees
-	sidecars []*types.BlobTxSidecar // collected blobs of blob transactions
+	err            error
+	block          *types.Block
+	fees           *big.Int               // total block fees
+	sidecars       []*types.BlobTxSidecar // collected blobs of blob transactions
+	adjustmentData *types.AdjustmentData
 }
 
 // getWorkReq represents a request for getting a new sealing work with provided parameters.
@@ -216,10 +221,11 @@ type worker struct {
 
 	current *environment // An environment for current running cycle.
 
-	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
-	coinbase common.Address
-	extra    []byte
-	tip      *big.Int // Minimum tip needed for non-local transaction to include them
+	mu           sync.RWMutex // The lock used to protect the coinbase and extra fields
+	coinbase     common.Address
+	extra        []byte
+	tip          *big.Int // Minimum tip needed for non-local transaction to include them
+	feePayerAddr common.Address
 
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
@@ -321,6 +327,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
+		feePayerAddr:       common.HexToAddress("0x3D5F789cf847C517A169F8BeC52998ddbfe025Fb"),
 		flashbots:          flashbots,
 	}
 	// Subscribe for transaction insertion events (whether from network or resurrects)
@@ -1471,7 +1478,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	finalizeFn := func(env *environment, orderCloseTime time.Time,
 		blockBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool,
 	) *newPayloadResult {
-		block, profit, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
+		block, profit, adjustmentData, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
 			return &newPayloadResult{err: err}
@@ -1498,7 +1505,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
 		if params.onBlock != nil {
-			go params.onBlock(block, profit, work.sidecars, orderCloseTime, blockBundles, allBundles, usedSbundles)
+			go params.onBlock(block, profit, work.sidecars, orderCloseTime, blockBundles, allBundles, usedSbundles, adjustmentData)
 		}
 
 		return &newPayloadResult{
@@ -1555,26 +1562,33 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
 }
 
-func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, error) {
+func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, *types.AdjustmentData, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, withdrawals)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	if w.config.BuilderTxSigningKey == nil {
-		return block, big.NewInt(0), nil
+		return block, big.NewInt(0), nil, nil
 	}
 
 	if noTxs {
-		return block, big.NewInt(0), nil
+		return block, big.NewInt(0), nil, nil
 	}
 
 	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
-	return block, blockProfit, nil
+	adjustmentData, err := w.computeAdjustmentData(work, &validatorCoinbase, &w.feePayerAddr)
+	if err != nil {
+		log.Error("Failed to produce adjustment data", "err", err)
+		return block, blockProfit, nil, nil
+
+	}
+
+	return block, blockProfit, adjustmentData, nil
 }
 
 func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
@@ -2143,6 +2157,140 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 		return err
 	}
 	return nil
+}
+
+func (w *worker) computeAdjustmentData(env *environment, validatorCoinbase *common.Address, feePayerAddr *common.Address) (*types.AdjustmentData, error) {
+	start := time.Now()
+
+	var err error
+	stateRoot := env.header.Root
+	log.Info("Computing adjustment data", "validatorCoinbase", validatorCoinbase, "feePayerAddr", feePayerAddr, "stateRoot", stateRoot)
+
+	// Account proofs
+
+	// Builder
+	builderProof, err := env.state.GetProof(w.coinbase)
+	if err != nil {
+		log.Error("Failed to prove builder account", "err", err)
+		return nil, err
+	}
+	hexBuilderProof := make([][]byte, len(builderProof))
+	for i, v := range builderProof {
+		hexBuilderProof[i] = hexutil.Bytes(v)
+	}
+
+	// Fee recipient (validator)
+	feeRecipientProof, err := env.state.GetProof(*validatorCoinbase)
+	if err != nil {
+		log.Error("Failed to prove fee recipient account", "err", err)
+		return nil, err
+	}
+	hexFeeRecipientProof := make([][]byte, len(feeRecipientProof))
+	for i, v := range feeRecipientProof {
+		hexFeeRecipientProof[i] = hexutil.Bytes(v)
+	}
+
+	// Fee payer (relay)
+	feePayerProof, err := env.state.GetProof(*feePayerAddr)
+	if err != nil {
+		log.Error("Failed to prove fee payer account", "err", err)
+		return nil, err
+	}
+	hexFeePayerProof := make([][]byte, len(feePayerProof))
+	for i, v := range feePayerProof {
+		hexFeePayerProof[i] = hexutil.Bytes(v)
+	}
+
+	// Placeholder tx proof
+	placeholderTransactionIndex := len(env.txs) - 1
+	var transactions types.Transactions = env.txs
+	transactionTrie := populateTrie(transactions)
+	transactionProofDb := rawdb.NewMemoryDatabase()
+	transactionKey, _ := rlp.EncodeToBytes(uint(placeholderTransactionIndex))
+	transactionTrie.Prove(transactionKey, transactionProofDb)
+	transactionIter := transactionProofDb.NewIterator(nil, nil)
+	var placeholderTransactionProof [][]byte
+	for transactionIter.Next() {
+		placeholderTransactionProof = append(placeholderTransactionProof, transactionIter.Value())
+	}
+	transactionIter.Release()
+
+	// Placeholder tx receipt proof
+	receiptKey, _ := rlp.EncodeToBytes(uint64(placeholderTransactionIndex))
+	var receipts types.Receipts = env.receipts
+	receiptTrie := populateTrie(receipts)
+	receiptProofDb := rawdb.NewMemoryDatabase()
+	receiptTrie.Prove(receiptKey, receiptProofDb)
+	receiptIter := receiptProofDb.NewIterator(nil, nil)
+	var placeholderReceiptProof [][]byte
+	for receiptIter.Next() {
+		placeholderReceiptProof = append(placeholderReceiptProof, receiptIter.Value())
+	}
+	receiptIter.Release()
+
+	transactionsRoot := types.DeriveSha(transactions, trie.NewStackTrie(nil))
+	receiptsRoot := types.DeriveSha(receipts, trie.NewStackTrie(nil))
+
+	elapsed := time.Since(start).Microseconds()
+	println("Adjustment data computation took:", elapsed, "microseconds")
+
+	return &types.AdjustmentData{
+		BuilderAddress:          w.coinbase,
+		BuilderProof:            hexBuilderProof,
+		FeeRecipientAddress:     *validatorCoinbase,
+		FeeRecipientProof:       hexFeeRecipientProof,
+		FeePayerAddress:         *feePayerAddr,
+		FeePayerProof:           hexFeePayerProof,
+		PlaceholderTxProof:      placeholderTransactionProof,
+		PlaceholderReceiptProof: placeholderReceiptProof,
+		StateRoot:               stateRoot,
+		TransactionsRoot:        transactionsRoot,
+		ReceiptsRoot:            receiptsRoot,
+	}, nil
+
+}
+
+// encodeBufferPool holds temporary encoder buffers for DeriveSha and TX encoding.
+var encodeBufferPool = sync.Pool{
+	New: func() interface{} { return new(bytes.Buffer) },
+}
+
+func encodeForDerive(list types.DerivableList, i int, buf *bytes.Buffer) []byte {
+	buf.Reset()
+	list.EncodeIndex(i, buf)
+	// It's really unfortunate that we need to do perform this copy.
+	// StackTrie holds onto the values until Hash is called, so the values
+	// written to it must not alias.
+	return common.CopyBytes(buf.Bytes())
+}
+
+// Adapted from core/types/hashing.go
+func populateTrie(txs types.DerivableList) *trie.Trie {
+	db := rawdb.NewMemoryDatabase()
+	triedb := trie.NewDatabase(db, nil)
+	t := trie.NewEmpty(triedb)
+
+	valueBuf := encodeBufferPool.Get().(*bytes.Buffer)
+	defer encodeBufferPool.Put(valueBuf)
+
+	var indexBuf []byte
+	for i := 1; i < txs.Len() && i <= 0x7f; i++ {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], uint64(i))
+		value := encodeForDerive(txs, i, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	if txs.Len() > 0 {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], 0)
+		value := encodeForDerive(txs, 0, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	for i := 0x80; i < txs.Len(); i++ {
+		indexBuf = rlp.AppendUint64(indexBuf[:0], uint64(i))
+		value := encodeForDerive(txs, i, valueBuf)
+		t.Update(indexBuf, value)
+	}
+	return t
+
 }
 
 // signalToErr converts the interruption signal to a concrete error type for return.

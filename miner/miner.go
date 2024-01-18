@@ -312,7 +312,7 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 
 // Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
 // TODO (deneb): refactor into block hook args
-type BlockHookFn = func(*types.Block, *big.Int, []*types.BlobTxSidecar, time.Time, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle)
+type BlockHookFn = func(*types.Block, *big.Int, []*types.BlobTxSidecar, time.Time, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, *types.AdjustmentData)
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {

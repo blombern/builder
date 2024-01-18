@@ -51,7 +51,7 @@ type ValidatorData struct {
 }
 
 type IRelay interface {
-	SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, vd ValidatorData) error
+	SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, vd ValidatorData, adj *types.AdjustmentData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -131,6 +131,8 @@ type SubmitBlockOpts struct {
 	ValidatorData ValidatorData
 	// PayloadAttributes are the payload attributes used for block building
 	PayloadAttributes *types.BuilderPayloadAttributes
+
+	AdjustmentData *types.AdjustmentData
 }
 
 func NewBuilder(args BuilderArgs) (*Builder, error) {
@@ -280,7 +282,7 @@ func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(opts.Block, opts.BlockValue, opts.OrdersClosedAt, opts.SealedAt, opts.CommitedBundles, opts.AllBundles, opts.UsedSbundles, &blockBidMsg)
-		err = b.relay.SubmitBlock(versionedBlockRequest, opts.ValidatorData)
+		err = b.relay.SubmitBlock(versionedBlockRequest, opts.ValidatorData, opts.AdjustmentData)
 		if err != nil {
 			log.Error("could not submit block", "err", err, "verion", dataVersion, "#commitedBundles", len(opts.CommitedBundles))
 			return err
@@ -400,6 +402,7 @@ type blockQueueEntry struct {
 	commitedBundles []types.SimulatedBundle
 	allBundles      []types.SimulatedBundle
 	usedSbundles    []types.UsedSBundle
+	adjustmentData  *types.AdjustmentData
 }
 
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
@@ -438,6 +441,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 				ProposerPubkey:    proposerPubkey,
 				ValidatorData:     vd,
 				PayloadAttributes: attrs,
+				AdjustmentData:    queueBestEntry.adjustmentData,
 			}
 			err := b.onSealedBlock(submitBlockOpts)
 
@@ -460,7 +464,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, sidecars []*types.BlobTxSidecar, ordersCloseTime time.Time,
-		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
+		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, adjustmentData *types.AdjustmentData,
 	) {
 		if ctx.Err() != nil {
 			return
@@ -480,6 +484,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 				commitedBundles: committedBundles,
 				allBundles:      allBundles,
 				usedSbundles:    usedSbundles,
+				adjustmentData:  adjustmentData,
 			}
 
 			select {
