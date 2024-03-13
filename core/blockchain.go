@@ -2471,9 +2471,17 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return errors.New("parent not found")
 	}
 
-	calculatedGasLimit := CalcGasLimit(parent.GasLimit, registeredGasLimit)
-	if calculatedGasLimit != header.GasLimit {
-		return errors.New("incorrect gas limit set")
+	if registeredGasLimit == 0 && header.GasLimit == CalcGasLimit(parent.GasLimit, 30_000_000) {
+		// Prysm has a bug where it registers validators with a desired gas limit
+		// of 0. Some builders treat these as desiring gas limit 30_000_000. As a
+		// workaround, whenever the desired gas limit is 0, we accept both the
+		// limit as calculated with a desired limit of 0, and builders which fall
+		// back to calculating with the default 30_000_000.
+	} else {
+		calculatedGasLimit := CalcGasLimit(parent.GasLimit, registeredGasLimit)
+		if calculatedGasLimit != header.GasLimit {
+			return fmt.Errorf("incorrect gas limit set, expected: %d, got: %d", calculatedGasLimit, header.GasLimit)
+		}
 	}
 
 	statedb, err := bc.StateAt(parent.Root)
