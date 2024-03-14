@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 var errHTTPErrorResponse = errors.New("HTTP error response")
@@ -18,6 +19,7 @@ func SendSSZRequest(ctx context.Context, client http.Client, method, url string,
 	var req *http.Request
 
 	reader := bytes.NewReader(payload)
+	apiToken := os.Getenv("DIRECT_ACCESS_API_TOKEN")
 
 	if useGzip {
 		// Create a new gzip writer
@@ -41,6 +43,7 @@ func SendSSZRequest(ctx context.Context, client http.Client, method, url string,
 			return 0, fmt.Errorf("error creating request: %w", err)
 		}
 		req.Header.Add("Content-Encoding", "gzip")
+		req.Header.Add("X-Api-Token", apiToken)
 	} else {
 		req, err = http.NewRequest(http.MethodPost, url, reader)
 		if err != nil {
@@ -84,6 +87,9 @@ func SendHTTPRequest(ctx context.Context, client http.Client, method, url string
 	if err != nil {
 		return 0, fmt.Errorf("could not prepare request: %w", err)
 	}
+
+	apiToken := os.Getenv("DIRECT_ACCESS_API_TOKEN")
+	req.Header.Add("X-Api-Token", apiToken)
 
 	// Execute request
 	resp, err := client.Do(req)
